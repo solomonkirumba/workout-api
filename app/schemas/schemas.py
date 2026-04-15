@@ -1,65 +1,64 @@
 # app/schemas/schemas.py
-from marshmallow import Schema, fields, validate, validates, ValidationError
+from marshmallow import Schema, fields, validate, ValidationError
 from app.models.workout_exercise import WorkoutExercise
 
 class WorkoutSchema(Schema):
     id = fields.Int(dump_only=True)
-    name = fields.Str(required=True, validate=validate.Length(min=1, max=100))
+    name = fields.Str(
+        required=True, 
+        validate=validate.Length(min=1, max=100, error="Workout name must be between 1 and 100 characters")
+    )
     created_at = fields.DateTime(dump_only=True)
-    
-    # Schema validation
-    @validates('name')
-    def validate_name(self, value):
-        if not value or value.strip() == '':
-            raise ValidationError("Workout name cannot be empty")
-        if len(value) > 100:
-            raise ValidationError("Workout name must be less than 100 characters")
+
 
 class ExerciseSchema(Schema):
     id = fields.Int(dump_only=True)
-    name = fields.Str(required=True, validate=validate.Length(min=1, max=100))
-    muscle_group = fields.Str(required=True, validate=validate.OneOf(['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core']))
+    name = fields.Str(
+        required=True,
+        validate=validate.Length(min=1, max=100, error="Exercise name must be between 1 and 100 characters")
+    )
+    muscle_group = fields.Str(
+        required=True,
+        validate=validate.OneOf(
+            ['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'],
+            error="Muscle group must be one of: Chest, Back, Legs, Shoulders, Arms, Core"
+        )
+    )
     description = fields.Str(allow_none=True)
-    
-    @validates('name')
-    def validate_name(self, value):
-        if not value or value.strip() == '':
-            raise ValidationError("Exercise name cannot be empty")
+
 
 class WorkoutExerciseSchema(Schema):
     id = fields.Int(dump_only=True)
     workout_id = fields.Int(required=True)
     exercise_id = fields.Int(required=True)
-    sets = fields.Int(allow_none=True, validate=validate.Range(min=1))
-    reps = fields.Int(allow_none=True, validate=validate.Range(min=1))
-    duration = fields.Int(allow_none=True, validate=validate.Range(min=1))
+    sets = fields.Int(allow_none=True, validate=validate.Range(min=1, error="Sets must be greater than 0"))
+    reps = fields.Int(allow_none=True, validate=validate.Range(min=1, error="Reps must be greater than 0"))
+    duration = fields.Int(allow_none=True, validate=validate.Range(min=1, error="Duration must be greater than 0"))
     
-    # Schema validation: at least one of sets, reps, or duration must be provided
-    @validates('sets')
-    def validate_sets(self, value):
-        if value is not None and value <= 0:
-            raise ValidationError("Sets must be greater than 0")
+    # Custom validation: at least one of sets, reps, or duration must be provided
+    @staticmethod
+    def validate_sets_reps_duration(data, **kwargs):
+        sets = data.get('sets')
+        reps = data.get('reps')
+        duration = data.get('duration')
+        
+        if not sets and not reps and not duration:
+            raise ValidationError("At least one of sets, reps, or duration must be provided")
+        return data
     
-    @validates('reps')
-    def validate_reps(self, value):
-        if value is not None and value <= 0:
-            raise ValidationError("Reps must be greater than 0")
-    
-    @validates('duration')
-    def validate_duration(self, value):
-        if value is not None and value <= 0:
-            raise ValidationError("Duration must be greater than 0")
-    
-    @validates('workout_id')
-    def validate_workout_id(self, value):
+    # Foreign key existence validation
+    @staticmethod
+    def validate_workout_id(data, **kwargs):
         from app.models.workout import Workout
-        workout = Workout.query.get(value)
+        workout = Workout.query.get(data.get('workout_id'))
         if not workout:
-            raise ValidationError(f"Workout with id {value} does not exist")
+            raise ValidationError(f"Workout with id {data.get('workout_id')} does not exist")
+        return data
     
-    @validates('exercise_id')
-    def validate_exercise_id(self, value):
+    @staticmethod
+    def validate_exercise_id(data, **kwargs):
         from app.models.exercise import Exercise
-        exercise = Exercise.query.get(value)
+        exercise = Exercise.query.get(data.get('exercise_id'))
         if not exercise:
-            raise ValidationError(f"Exercise with id {value} does not exist")
+            raise ValidationError(f"Exercise with id {data.get('exercise_id')} does not exist")
+        return data
