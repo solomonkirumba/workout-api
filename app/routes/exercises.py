@@ -1,4 +1,3 @@
-# app/routes/exercises.py
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.exercise import Exercise
@@ -8,11 +7,26 @@ exercises_bp = Blueprint('exercises', __name__)
 exercise_schema = ExerciseSchema()
 exercises_schema = ExerciseSchema(many=True)
 
-# GET all exercises
+# GET all exercises (with pagination)
 @exercises_bp.route('/', methods=['GET'])
 def get_exercises():
-    exercises = Exercise.query.all()
-    return jsonify(exercises_schema.dump(exercises)), 200
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    per_page = min(per_page, 50)
+    
+    paginated = Exercise.query.order_by(Exercise.id).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    return jsonify({
+        'exercises': exercises_schema.dump(paginated.items),
+        'total': paginated.total,
+        'page': page,
+        'per_page': per_page,
+        'pages': paginated.pages,
+        'has_next': paginated.has_next,
+        'has_prev': paginated.has_prev
+    }), 200
 
 # GET single exercise by id
 @exercises_bp.route('/<int:id>', methods=['GET'])
@@ -27,12 +41,10 @@ def get_exercise(id):
 def create_exercise():
     data = request.get_json()
     
-    # Schema validation
     errors = exercise_schema.validate(data)
     if errors:
         return jsonify({'errors': errors}), 400
     
-    # Check if exercise with same name exists
     existing = Exercise.query.filter_by(name=data['name']).first()
     if existing:
         return jsonify({'error': 'Exercise with this name already exists'}), 400

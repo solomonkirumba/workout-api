@@ -1,4 +1,3 @@
-# app/routes/workouts.py
 from flask import Blueprint, request, jsonify
 from app import db
 from app.models.workout import Workout
@@ -10,11 +9,26 @@ workout_schema = WorkoutSchema()
 workouts_schema = WorkoutSchema(many=True)
 workout_exercise_schema = WorkoutExerciseSchema()
 
-# GET all workouts
+# GET all workouts (with pagination)
 @workouts_bp.route('/', methods=['GET'])
 def get_workouts():
-    workouts = Workout.query.all()
-    return jsonify(workouts_schema.dump(workouts)), 200
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    per_page = min(per_page, 50)
+    
+    paginated = Workout.query.order_by(Workout.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    return jsonify({
+        'workouts': workouts_schema.dump(paginated.items),
+        'total': paginated.total,
+        'page': page,
+        'per_page': per_page,
+        'pages': paginated.pages,
+        'has_next': paginated.has_next,
+        'has_prev': paginated.has_prev
+    }), 200
 
 # GET single workout by id
 @workouts_bp.route('/<int:id>', methods=['GET'])
@@ -48,12 +62,10 @@ def get_workout_exercises(id):
 def create_workout():
     data = request.get_json()
     
-    # Schema validation
     errors = workout_schema.validate(data)
     if errors:
         return jsonify({'errors': errors}), 400
     
-    # Check if workout with same name exists
     existing = Workout.query.filter_by(name=data['name']).first()
     if existing:
         return jsonify({'error': 'Workout with this name already exists'}), 400
@@ -74,12 +86,10 @@ def add_exercise_to_workout(id):
     data = request.get_json()
     data['workout_id'] = id
     
-    # Schema validation
     errors = workout_exercise_schema.validate(data)
     if errors:
         return jsonify({'errors': errors}), 400
     
-    # Check if exercise already in workout (optional, preventing duplicates)
     existing = WorkoutExercise.query.filter_by(workout_id=id, exercise_id=data['exercise_id']).first()
     if existing:
         return jsonify({'error': 'Exercise already in workout'}), 400
